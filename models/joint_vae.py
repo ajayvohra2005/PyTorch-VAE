@@ -12,6 +12,7 @@ class JointVAE(BaseVAE):
     def __init__(self,
                  in_channels: int,
                  latent_dim: int,
+                 input_size: int,
                  categorical_dim: int,
                  latent_min_capacity: float =0.,
                  latent_max_capacity: float = 25.,
@@ -53,7 +54,9 @@ class JointVAE(BaseVAE):
         if hidden_dims is None:
             hidden_dims = [32, 64, 128, 256, 512]
 
+        self.encoder_last_channel = hidden_dims[-1]
         # Build Encoder
+
         for h_dim in hidden_dims:
             modules.append(
                 nn.Sequential(
@@ -65,15 +68,17 @@ class JointVAE(BaseVAE):
             in_channels = h_dim
 
         self.encoder = nn.Sequential(*modules)
-        self.fc_mu = nn.Linear(hidden_dims[-1]*4, self.latent_dim)
-        self.fc_var = nn.Linear(hidden_dims[-1]*4, self.latent_dim)
-        self.fc_z = nn.Linear(hidden_dims[-1]*4, self.categorical_dim)
+        self.latent_size = int(input_size/(2**len(hidden_dims)))
+        self.fc_mu = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, self.latent_dim)
+        self.fc_var = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, self.latent_dim)
+        self.fc_z = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, self.categorical_dim)
 
         # Build Decoder
         modules = []
 
         self.decoder_input = nn.Linear(self.latent_dim + self.categorical_dim,
-                                       hidden_dims[-1] * 4)
+                                       hidden_dims[-1] * self.latent_size * self.latent_size
+)
 
         hidden_dims.reverse()
 
@@ -134,7 +139,8 @@ class JointVAE(BaseVAE):
         :return: (Tensor) [B x C x H x W]
         """
         result = self.decoder_input(z)
-        result = result.view(-1, 512, 2, 2)
+        result = result.view(-1, self.encoder_last_channel, self.latent_size, self.latent_size)
+
         result = self.decoder(result)
         result = self.final_layer(result)
         return result

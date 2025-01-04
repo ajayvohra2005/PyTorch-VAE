@@ -12,6 +12,7 @@ class BetaVAE(BaseVAE):
     def __init__(self,
                  in_channels: int,
                  latent_dim: int,
+                 input_size: int,
                  hidden_dims: List = None,
                  beta: int = 4,
                  gamma:float = 1000.,
@@ -32,7 +33,9 @@ class BetaVAE(BaseVAE):
         if hidden_dims is None:
             hidden_dims = [32, 64, 128, 256, 512]
 
+        self.encoder_last_channel = hidden_dims[-1]
         # Build Encoder
+
         for h_dim in hidden_dims:
             modules.append(
                 nn.Sequential(
@@ -44,14 +47,15 @@ class BetaVAE(BaseVAE):
             in_channels = h_dim
 
         self.encoder = nn.Sequential(*modules)
-        self.fc_mu = nn.Linear(hidden_dims[-1]*4, latent_dim)
-        self.fc_var = nn.Linear(hidden_dims[-1]*4, latent_dim)
+        self.latent_size = int(input_size/(2**len(hidden_dims)))
+        self.fc_mu = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, latent_dim)
+        self.fc_var = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, latent_dim)
 
 
         # Build Decoder
         modules = []
 
-        self.decoder_input = nn.Linear(latent_dim, hidden_dims[-1] * 4)
+        self.decoder_input = nn.Linear(latent_dim, hidden_dims[-1] * self.latent_size * self.latent_size)
 
         hidden_dims.reverse()
 
@@ -104,7 +108,8 @@ class BetaVAE(BaseVAE):
 
     def decode(self, z: Tensor) -> Tensor:
         result = self.decoder_input(z)
-        result = result.view(-1, 512, 2, 2)
+        result = result.view(-1, self.encoder_last_channel, self.latent_size, self.latent_size)
+
         result = self.decoder(result)
         result = self.final_layer(result)
         return result

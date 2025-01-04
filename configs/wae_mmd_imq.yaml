@@ -2,15 +2,18 @@ model_params:
   name: 'WAE_MMD'
   in_channels: 3
   latent_dim: 128
+  input_size: 64
   reg_weight: 100
   kernel_type: 'imq'
 
 data_params:
-  data_path: "Data/"
+  data_path: "/home/ubuntu/efs/datasets"
   train_batch_size: 64
-  val_batch_size:  64
+  val_batch_size: 64
+  test_batch_size: 64
   patch_size: 64
   num_workers: 4
+  dataset: 'CelebA'
 
 
 exp_params:
@@ -21,8 +24,8 @@ exp_params:
   manual_seed: 1265
 
 trainer_params:
-  gpus: [1]
-  max_epochs: 10
+  devices: "auto"
+  max_epochs: 100
 
 logging_params:
   save_dir: "logs/"

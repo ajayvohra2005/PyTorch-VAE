@@ -1,6 +1,6 @@
 import os
 import torch
-from torch import Tensor
+from torch import Tensor, Type
 from pathlib import Path
 from typing import List, Optional, Sequence, Union, Any, Callable
 from torchvision.datasets.folder import default_loader
@@ -9,20 +9,30 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import CelebA
 import zipfile
+from datasets import load_dataset
 
-
-# Add your custom dataset class here
-class MyDataset(Dataset):
-    def __init__(self):
-        pass
-    
-    
+class COCO2017Dataset(Dataset):
+    def __init__(self, 
+                 data_path: str, 
+                 split: str,
+                 transform: Callable):
+        assert split in ["train", "test", "val"]
+        data_dir = Path(data_path) / "COCO" / f"{split}2017"     
+        self.dataset = load_dataset("imagefolder", data_dir=data_dir)['train']
+        self.transforms = transform
+        
+        print(f"Total images in dataset split: {split}: {len(self.imgs)}")
+        
     def __len__(self):
-        pass
+        return len(self.dataset)
     
     def __getitem__(self, idx):
-        pass
-
+        image = self.dataset[idx]['image']
+        img = image.convert("RGB")
+        
+        if self.transforms is not None:
+            img = self.transforms(img)
+        return img, 0.0 # dummy datat to prevent breaking
 
 class MyCelebA(CelebA):
     """
@@ -46,12 +56,20 @@ class OxfordPets(Dataset):
                  split: str,
                  transform: Callable,
                 **kwargs):
-        self.data_dir = Path(data_path) / "OxfordPets"        
+        assert split in ["train", "test", "val"]
+        self.data_dir = Path(data_path) / "OxfordPets"   / "images"     
         self.transforms = transform
         imgs = sorted([f for f in self.data_dir.iterdir() if f.suffix == '.jpg'])
         
-        self.imgs = imgs[:int(len(imgs) * 0.75)] if split == "train" else imgs[int(len(imgs) * 0.75):]
+        if split == "train":
+            self.imgs = imgs[:int(len(imgs) * 0.75)]
+        elif split == "val":
+            self.imgs = imgs[int(len(imgs) * 0.75):int(len(imgs) * 0.85)]
+        elif split == "test":
+            self.imgs = imgs[int(len(imgs) * 0.85):]
     
+        print(f"Total images in dataset split: {split}: {len(self.imgs)}")
+
     def __len__(self):
         return len(self.imgs)
     
@@ -61,7 +79,7 @@ class OxfordPets(Dataset):
         if self.transforms is not None:
             img = self.transforms(img)
         
-        return img, 0.0 # dummy datat to prevent breaking 
+        return img, 0.0 # dummy datat to prevent breaking
 
 class VAEDataset(LightningDataModule):
     """
@@ -83,9 +101,11 @@ class VAEDataset(LightningDataModule):
         data_path: str,
         train_batch_size: int = 8,
         val_batch_size: int = 8,
+        test_batch_size: int = 8,
         patch_size: Union[int, Sequence[int]] = (256, 256),
         num_workers: int = 0,
         pin_memory: bool = False,
+        dataset: str = 'OxfordPets',
         **kwargs,
     ):
         super().__init__()
@@ -93,64 +113,59 @@ class VAEDataset(LightningDataModule):
         self.data_dir = data_path
         self.train_batch_size = train_batch_size
         self.val_batch_size = val_batch_size
+        self.test_batch_size = test_batch_size
         self.patch_size = patch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        
+        assert dataset in ['OxfordPets', 'CelebA', 'COCO2017']
+        if dataset == 'OxfordPets':
+            self.dataset_cls = OxfordPets
+        elif dataset == 'CelebA':
+            self.dataset_cls = MyCelebA
+        elif dataset == 'COCO2017':
+            self.dataset_cls = COCO2017Dataset
 
     def setup(self, stage: Optional[str] = None) -> None:
-#       =========================  OxfordPets Dataset  =========================
-            
-#         train_transforms = transforms.Compose([transforms.RandomHorizontalFlip(),
-#                                               transforms.CenterCrop(self.patch_size),
-# #                                               transforms.Resize(self.patch_size),
-#                                               transforms.ToTensor(),
-#                                                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
-        
-#         val_transforms = transforms.Compose([transforms.RandomHorizontalFlip(),
-#                                             transforms.CenterCrop(self.patch_size),
-# #                                             transforms.Resize(self.patch_size),
-#                                             transforms.ToTensor(),
-#                                               transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
-
-#         self.train_dataset = OxfordPets(
-#             self.data_dir,
-#             split='train',
-#             transform=train_transforms,
-#         )
-        
-#         self.val_dataset = OxfordPets(
-#             self.data_dir,
-#             split='val',
-#             transform=val_transforms,
-#         )
-        
-#       =========================  CelebA Dataset  =========================
-    
         train_transforms = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                              transforms.CenterCrop(148),
+                                              transforms.CenterCrop(self.patch_size),
                                               transforms.Resize(self.patch_size),
-                                              transforms.ToTensor(),])
+                                              transforms.ToTensor(),
+                                              transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
         
         val_transforms = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                            transforms.CenterCrop(148),
+                                            transforms.CenterCrop(self.patch_size),
                                             transforms.Resize(self.patch_size),
-                                            transforms.ToTensor(),])
+                                            transforms.ToTensor(),
+                                            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
         
-        self.train_dataset = MyCelebA(
+        test_transforms = transforms.Compose([transforms.RandomHorizontalFlip(),
+                                            transforms.CenterCrop(self.patch_size),
+                                            transforms.Resize(self.patch_size),
+                                            transforms.ToTensor(),
+                                            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
+        
+        print("setup train dataset")
+        self.train_dataset = self.dataset_cls(
             self.data_dir,
             split='train',
             transform=train_transforms,
-            download=False,
         )
         
-        # Replace CelebA with your dataset
-        self.val_dataset = MyCelebA(
+        print("setup val  dataset")
+        self.val_dataset = self.dataset_cls(
+            self.data_dir,
+            split='valid' if self.dataset_cls == MyCelebA else 'val',
+            transform=val_transforms,
+        )
+
+        print("setup test  dataset")
+        self.test_dataset = self.dataset_cls(
             self.data_dir,
             split='test',
-            transform=val_transforms,
-            download=False,
+            transform=test_transforms,
         )
-#       ===============================================================
+        print("setup completed")
         
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -172,10 +187,10 @@ class VAEDataset(LightningDataModule):
     
     def test_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(
-            self.val_dataset,
-            batch_size=144,
+            self.test_dataset,
+            batch_size=self.test_batch_size,
             num_workers=self.num_workers,
-            shuffle=True,
+            shuffle=False,
             pin_memory=self.pin_memory,
         )
      

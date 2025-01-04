@@ -1,7 +1,8 @@
 model_params:
   name: 'JointVAE'
   in_channels: 3
-  latent_dim: 512
+  latent_dim: 128
+  input_size: 64
   categorical_dim: 40
   latent_min_capacity: 0.0
   latent_max_capacity: 20.0
@@ -17,11 +18,13 @@ model_params:
   alpha: 10.0
 
 data_params:
-  data_path: "Data/"
+  data_path: "/home/ubuntu/efs/datasets"
   train_batch_size: 64
-  val_batch_size:  64
+  val_batch_size: 64
+  test_batch_size: 64
   patch_size: 64
   num_workers: 4
+  dataset: 'CelebA'
 
 
 exp_params:
@@ -32,8 +35,8 @@ exp_params:
   manual_seed: 1265
 
 trainer_params:
-  gpus: [1]
-  max_epochs: 10
+  devices: "auto"
+  max_epochs: 100
 
 logging_params:
   save_dir: "logs/"

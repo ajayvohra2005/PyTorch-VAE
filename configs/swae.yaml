@@ -2,17 +2,20 @@ model_params:
   name: 'SWAE'
   in_channels: 3
   latent_dim: 128
+  input_size: 64
   reg_weight: 100
   wasserstein_deg: 2.0
   num_projections: 200
   projection_dist: "normal" #"cauchy"
 
 data_params:
-  data_path: "Data/"
+  data_path: "/home/ubuntu/efs/datasets"
   train_batch_size: 64
-  val_batch_size:  64
+  val_batch_size: 64
+  test_batch_size: 64
   patch_size: 64
   num_workers: 4
+  dataset: 'CelebA'
 
 
 exp_params:
@@ -23,8 +26,8 @@ exp_params:
   manual_seed: 1265
 
 trainer_params:
-  gpus: [1]
-  max_epochs: 10
+  devices: "auto"
+  max_epochs: 100
 
 logging_params:
   save_dir: "logs/"

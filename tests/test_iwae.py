@@ -29,7 +29,7 @@ class TestIWAE(unittest.TestCase):
 
     def test_sample(self):
         self.model.cuda()
-        y = self.model.sample(144, 0)
+        y = self.model.sample(64, 0)
 
 
 if __name__ == '__main__':

@@ -37,9 +37,11 @@ class HVAE(BaseVAE):
             )
             channels = h_dim
 
+        self.encoder_last_channel = hidden_dims[-1]
+        self.latent_size = int(img_size/(2**len(hidden_dims)))
         self.encoder_z2_layers = nn.Sequential(*modules)
-        self.fc_z2_mu = nn.Linear(hidden_dims[-1]*4, latent2_dim)
-        self.fc_z2_var = nn.Linear(hidden_dims[-1]*4, latent2_dim)
+        self.fc_z2_mu = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, latent2_dim)
+        self.fc_z2_var = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, latent2_dim)
         # ========================================================================#
         # Build z1 Encoder
         self.embed_z2_code = nn.Linear(latent2_dim, img_size * img_size)
@@ -58,8 +60,8 @@ class HVAE(BaseVAE):
             channels = h_dim
 
         self.encoder_z1_layers = nn.Sequential(*modules)
-        self.fc_z1_mu = nn.Linear(hidden_dims[-1]*4, latent1_dim)
-        self.fc_z1_var = nn.Linear(hidden_dims[-1]*4, latent1_dim)
+        self.fc_z1_mu = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, latent1_dim)
+        self.fc_z1_var = nn.Linear(hidden_dims[-1]*self.latent_size*self.latent_size, latent1_dim)
 
         #========================================================================#
         # Build z2 Decoder
@@ -180,7 +182,8 @@ class HVAE(BaseVAE):
         debedded_z1 = self.debed_z1_code(z1)
         debedded_z2 = self.debed_z2_code(z2)
         result = torch.cat([debedded_z1, debedded_z2], dim=1)
-        result = result.view(-1, 512, 2, 2)
+        result = result.view(-1, self.encoder_last_channel, self.latent_size, self.latent_size)
+
         recons = self.decode(result)
 
         return  [recons,
@@ -244,7 +247,8 @@ class HVAE(BaseVAE):
         debedded_z2 = self.debed_z2_code(z2)
 
         result = torch.cat([debedded_z1, debedded_z2], dim=1)
-        result = result.view(-1, 512, 2, 2)
+        result = result.view(-1, self.encoder_last_channel, self.latent_size, self.latent_size)
+
         samples = self.decode(result)
 
         return samples

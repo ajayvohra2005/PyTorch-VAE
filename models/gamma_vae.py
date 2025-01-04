@@ -12,6 +12,7 @@ class GammaVAE(BaseVAE):
     def __init__(self,
                  in_channels: int,
                  latent_dim: int,
+                 input_size: int,
                  hidden_dims: List = None,
                  gamma_shape: float = 8.,
                  prior_shape: float = 2.0,
@@ -28,7 +29,9 @@ class GammaVAE(BaseVAE):
         if hidden_dims is None:
             hidden_dims = [32, 64, 128, 256, 512]
 
+        self.encoder_last_channel = hidden_dims[-1]
         # Build Encoder
+
         for h_dim in hidden_dims:
             modules.append(
                 nn.Sequential(
@@ -40,15 +43,19 @@ class GammaVAE(BaseVAE):
             in_channels = h_dim
 
         self.encoder = nn.Sequential(*modules)
-        self.fc_mu = nn.Sequential(nn.Linear(hidden_dims[-1] * 4, latent_dim),
+        self.latent_size = int(input_size/(2**len(hidden_dims)))
+        self.fc_mu = nn.Sequential(nn.Linear(hidden_dims[-1] * self.latent_size * self.latent_size
+, latent_dim),
                                    nn.Softmax())
-        self.fc_var = nn.Sequential(nn.Linear(hidden_dims[-1] * 4, latent_dim),
+        self.fc_var = nn.Sequential(nn.Linear(hidden_dims[-1] * self.latent_size * self.latent_size
+, latent_dim),
                                     nn.Softmax())
 
         # Build Decoder
         modules = []
 
-        self.decoder_input = nn.Sequential(nn.Linear(latent_dim, hidden_dims[-1] * 4))
+        self.decoder_input = nn.Sequential(nn.Linear(latent_dim, hidden_dims[-1] * self.latent_size * self.latent_size
+))
 
         hidden_dims.reverse()
 
@@ -108,7 +115,8 @@ class GammaVAE(BaseVAE):
 
     def decode(self, z: Tensor) -> Tensor:
         result = self.decoder_input(z)
-        result = result.view(-1, 512, 2, 2)
+        result = result.view(-1, self.encoder_last_channel, self.latent_size, self.latent_size)
+
         result = self.decoder(result)
         result = self.final_layer(result)
         return result

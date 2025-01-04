@@ -23,36 +23,53 @@ class VAEXperiment(pl.LightningModule):
         self.params = params
         self.curr_device = None
         self.hold_graph = False
+        self.automatic_optimization = False
         try:
             self.hold_graph = self.params['retain_first_backpass']
         except:
             pass
 
+        try:
+            manual_seed = self.params['manual_seed']
+            torch.manual_seed(manual_seed)
+            torch.cuda.manual_seed(manual_seed)
+        except:
+            pass
     def forward(self, input: Tensor, **kwargs) -> Tensor:
         return self.model(input, **kwargs)
 
-    def training_step(self, batch, batch_idx, optimizer_idx = 0):
+    def training_step(self, batch, batch_idx):
         real_img, labels = batch
         self.curr_device = real_img.device
 
         results = self.forward(real_img, labels = labels)
         train_loss = self.model.loss_function(*results,
                                               M_N = self.params['kld_weight'], #al_img.shape[0]/ self.num_train_imgs,
-                                              optimizer_idx=optimizer_idx,
                                               batch_idx = batch_idx)
 
         self.log_dict({key: val.item() for key, val in train_loss.items()}, sync_dist=True)
 
-        return train_loss['loss']
+        opt = self.optimizers()
 
-    def validation_step(self, batch, batch_idx, optimizer_idx = 0):
+        # compute loss
+        loss = train_loss['loss']
+
+        opt.zero_grad()
+        self.manual_backward(loss)
+
+        # clip gradients
+        self.clip_gradients(opt, gradient_clip_val=0.5, gradient_clip_algorithm="norm")
+
+        opt.step()
+
+
+    def validation_step(self, batch, batch_idx):
         real_img, labels = batch
         self.curr_device = real_img.device
 
         results = self.forward(real_img, labels = labels)
         val_loss = self.model.loss_function(*results,
                                             M_N = 1.0, #real_img.shape[0]/ self.num_val_imgs,
-                                            optimizer_idx = optimizer_idx,
                                             batch_idx = batch_idx)
 
         self.log_dict({f"val_{key}": val.item() for key, val in val_loss.items()}, sync_dist=True)
@@ -74,10 +91,10 @@ class VAEXperiment(pl.LightningModule):
                                        "Reconstructions", 
                                        f"recons_{self.logger.name}_Epoch_{self.current_epoch}.png"),
                           normalize=True,
-                          nrow=12)
+                          nrow=8)
 
         try:
-            samples = self.model.sample(144,
+            samples = self.model.sample(64,
                                         self.curr_device,
                                         labels = test_label)
             vutils.save_image(samples.cpu().data,
@@ -85,7 +102,7 @@ class VAEXperiment(pl.LightningModule):
                                            "Samples",      
                                            f"{self.logger.name}_Epoch_{self.current_epoch}.png"),
                               normalize=True,
-                              nrow=12)
+                              nrow=8)
         except Warning:
             pass
 
@@ -94,14 +111,14 @@ class VAEXperiment(pl.LightningModule):
         optims = []
         scheds = []
 
-        optimizer = optim.Adam(self.model.parameters(),
+        optimizer = optim.AdamW(self.model.parameters(),
                                lr=self.params['LR'],
                                weight_decay=self.params['weight_decay'])
         optims.append(optimizer)
         # Check if more than 1 optimizer is required (Used for adversarial training)
         try:
             if self.params['LR_2'] is not None:
-                optimizer2 = optim.Adam(getattr(self.model,self.params['submodel']).parameters(),
+                optimizer2 = optim.AdamW(getattr(self.model,self.params['submodel']).parameters(),
                                         lr=self.params['LR_2'])
                 optims.append(optimizer2)
         except:
